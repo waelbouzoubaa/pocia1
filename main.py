@@ -20,7 +20,7 @@ def predict_themes(input: AvisInput):
     themes = [
         {"label": label, "score": round(score, 3)}
         for label, score in zip(result["labels"], result["scores"])
-        if score > 0.3
+        if score > 0.8
     ]
     return {"texte": input.texte, "themes_detectés": themes}
 
