@@ -5,7 +5,7 @@ from transformers import pipeline
 app = FastAPI()
 
 # Modèle 1 : Zero-shot classification (thèmes)
-zero_shot_classifier = pipeline("zero-shot-classification", model="joeddav/xlm-roberta-large-xnli")
+zero_shot_classifier = pipeline("zero-shot-classification", model="MoritzLaurer/mDeBERTa-v3-base-mnli-xnli")
 LABELS = ["service", "nourriture", "prix", "propreté"]
 
 # Modèle 2 : Sentiment analysis (exemple simplifié)
