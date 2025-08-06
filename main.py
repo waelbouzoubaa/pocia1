@@ -8,8 +8,8 @@ from typing import List
 
 app = FastAPI()
 
-# 🔐 Configuration sécurité
-SECRET_KEY = "5MWWmcTYqSdj3X7n0lRYOafbsvnscvWTzQvEnVi4EF57cPQkg"
+#Configuration sécurité
+SECRET_KEY = "U9MWmcqYqSdj3X7n0lRY8675ThJuua9TzQvEnVi4EF57cPokF"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
@@ -21,8 +21,8 @@ oauth2_scheme = OAuth2PasswordBearer(
     }
 )
 
-# 🧑‍💻 Simule une base utilisateurs
-fake_users_db = {
+# Simule une base utilisateurs
+TEST_users_db = {
     "admin": {
         "username": "admin",
         "password": "1234",  # version simplifiée
@@ -32,12 +32,17 @@ fake_users_db = {
         "username": "lecteur",
         "password": "test",
         "scopes": ["themes"]
+    },
+    "wael": {
+        "username": "wael",
+        "password": "1@rt1f1c13ll3",
+        "scopes": ["themes", "sentiment"]
     }
 }
 
-# 🔑 Fonctions de sécurité
+# Fonctions de sécurité
 def authenticate_user(username: str, password: str):
-    user = fake_users_db.get(username)
+    user = TEST_users_db.get(username)
     if user and user["password"] == password:
         return user
     return None
@@ -75,7 +80,7 @@ def get_current_user(security_scopes: SecurityScopes, token: str = Depends(oauth
     
     return username
 
-# 📊 Chargement des modèles
+# Chargement des modèles
 zero_shot_classifier = pipeline(
     "zero-shot-classification",
     model="joeddav/xlm-roberta-large-xnli"
@@ -89,7 +94,7 @@ sentiment_classifier = pipeline(
     tokenizer=AutoTokenizer.from_pretrained(absa_model_name)
 )
 
-# 📥 Schémas Pydantic
+# Schémas Pydantic
 class AvisInput(BaseModel):
     texte: str
 
@@ -97,7 +102,7 @@ class AvisThemeInput(BaseModel):
     texte: str
     theme: str
 
-# 🔒 Endpoint 1 : Détection de thèmes
+# Endpoint 1 : Détection de thèmes
 @app.post("/predict-themes")
 def predict_themes(input: AvisInput, user: str = Security(get_current_user, scopes=["themes"])):
     result = zero_shot_classifier(
@@ -109,11 +114,11 @@ def predict_themes(input: AvisInput, user: str = Security(get_current_user, scop
     themes = [
         {"label": label, "score": round(score, 3)}
         for label, score in zip(result["labels"], result["scores"])
-        if score > 0.8
+        if score > 0.9
     ]
     return {"utilisateur": user, "texte": input.texte, "themes_detectés": themes}
 
-# 🔒 Endpoint 2 : Analyse de sentiment par thème
+# Endpoint 2 : Analyse de sentiment par thème
 @app.post("/predict-sentiment-theme")
 def predict_sentiment_theme(input: AvisThemeInput, user: str = Security(get_current_user, scopes=["sentiment"])):
     input_text = f"{input.texte} [SEP] aspect: {input.theme}"
