@@ -4,3 +4,5 @@ torch
 uvicorn
 protobuf
 sentencepiece
+python-jose[cryptography]
+python-multipart
