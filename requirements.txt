@@ -6,4 +6,3 @@ protobuf
 sentencepiece
 python-jose[cryptography]
 python-multipart
-langdetect
