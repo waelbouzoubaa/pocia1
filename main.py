@@ -1,79 +1,75 @@
 from fastapi import FastAPI, Depends, HTTPException, Security, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, SecurityScopes
-from pydantic import BaseModel
-from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
 from pydantic import BaseModel, Field
 from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification, AutoModelForSeq2SeqLM
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
-from typing import List
 from typing import List, Optional
 from langdetect import detect
 
 app = FastAPI()
 
-#Configuration sécurité
 # =========================
 # Configuration sécurité
 # =========================
 SECRET_KEY = "U9MWmcqYqSdj3X7n0lRY8675ThJuua9TzQvEnVi4EF57cPokF"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
-@@ -21,26 +24,16 @@
+
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="token",
+    scopes={
+        "themes": "Accès à la détection de thèmes",
+        "sentiment": "Accès à l’analyse de sentiment"
     }
 )
 
-# Simule une base utilisateurs
 # Simule une base utilisateurs (POC)
 TEST_users_db = {
-    "admin": {
-        "username": "admin",
-        "password": "1234",  # version simplifiée
-        "scopes": ["themes", "sentiment"]
-    },
-    "lecteur": {
-        "username": "lecteur",
-        "password": "test",
-        "scopes": ["themes"]
-    },
-    "wael": {
-        "username": "wael",
-        "password": "1@rt1f1c13ll3",
-        "scopes": ["themes", "sentiment"]
-    }
     "admin":   {"username": "admin",   "password": "1234",           "scopes": ["themes", "sentiment"]},
     "lecteur": {"username": "lecteur", "password": "test",           "scopes": ["themes"]},
     "wael":    {"username": "wael",    "password": "1@rt1f1c13ll3",  "scopes": ["themes", "sentiment"]}
 }
 
-# Fonctions de sécurité
 # =========================
 # Fonctions sécurité
 # =========================
 def authenticate_user(username: str, password: str):
     user = TEST_users_db.get(username)
     if user and user["password"] == password:
-@@ -58,10 +51,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
+        return user
+    return None
+
+def create_access_token(data: dict, expires_delta: timedelta = None):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+@app.post("/token")
+def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user = authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(status_code=401, detail="Identifiants invalides")
-    token = create_access_token({
-        "sub": user["username"],
-        "scopes": user["scopes"]
-    })
     token = create_access_token({"sub": user["username"], "scopes": user["scopes"]},
                                 expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     return {"access_token": token, "token_type": "bearer"}
 
 def get_current_user(security_scopes: SecurityScopes, token: str = Depends(oauth2_scheme)):
-@@ -77,32 +68,69 @@ def get_current_user(security_scopes: SecurityScopes, token: str = Depends(oauth
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        token_scopes = payload.get("scopes", [])
+        if username is None:
+            raise HTTPException(status_code=401, detail="Token invalide")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token incorrect")
+
     for scope in security_scopes.scopes:
         if scope not in token_scopes:
             raise HTTPException(status_code=403, detail=f"Permission '{scope}' requise")
-    
     return username
 
-# Chargement des modèles
 # =========================
 # Modèles NLP
 # =========================
@@ -130,7 +126,6 @@ class AvisThemeInput(BaseModel):
     # "auto" = détecte la langue; ou force "fr", "en", "ar", ...
     lang: str = Field(default="auto", description='Langue du texte: "auto" | "fr" | "en" | ...')
 
-# Endpoint 1 : Détection de thèmes
 # =========================
 # Endpoints
 # =========================
@@ -139,15 +134,21 @@ class AvisThemeInput(BaseModel):
 @app.post("/predict-themes")
 def predict_themes(input: AvisInput, user: str = Security(get_current_user, scopes=["themes"])):
     result = zero_shot_classifier(
-@@ -118,14 +146,44 @@ def predict_themes(input: AvisInput, user: str = Security(get_current_user, scop
+        input.texte,
+        LABELS,
+        multi_label=True,
+        hypothesis_template="Ce commentaire concerne {}."
+    )
+    themes = [
+        {"label": label, "score": round(score, 3)}
+        for label, score in zip(result["labels"], result["scores"])
+        if score > 0.9
     ]
     return {"utilisateur": user, "texte": input.texte, "themes_detectés": themes}
 
-# Endpoint 2 : Analyse de sentiment par thème
 # 2) Sentiment par thème (ABSA) avec traduction auto -> EN si nécessaire
 @app.post("/predict-sentiment-theme")
 def predict_sentiment_theme(input: AvisThemeInput, user: str = Security(get_current_user, scopes=["sentiment"])):
-    input_text = f"{input.texte} [SEP] aspect: {input.theme}"
     # a) détection/choix de langue
     lang = input.lang
     if lang == "auto":
